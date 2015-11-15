@@ -7,27 +7,6 @@
 # Copyright 2012 Linkoping University
 # -----------------------------------------------------------------------------
 
-"""Module for the distributed mutual exclusion implementation.
-
-This implementation is based on the second Rikard-Agravara algorithm.
-The implementation should satisfy the following requests:
-    --  when starting, the peer with the smallest id in the peer list
-        should get the token.
-    --  access to the state of each peer (dictinaries: request, token,
-        and peer_list) should be protected.
-    --  the implementation should gratiously handle situations when a
-        peer dies unexpectedly. All exceptions comming from calling
-        peers that have died, should be handled such as the rest of the
-        peers in the system are still working. Whenever a peer has been
-        detected as dead, the token, request, and peer_list
-        dictionaries should be updated acordingly.
-    --  when the peer that has the token (either TOKEN_PRESENT or
-        TOKEN_HELD) quits, it should pass the token to some other peer.
-    --  For simplicity, we shall not handle the case when the peer
-        holding the token dies unexpectedly.
-
-"""
-
 NO_TOKEN = 0
 TOKEN_PRESENT = 1
 TOKEN_HELD = 2
@@ -86,10 +65,23 @@ class DistributedLock(object):
         function is called.
 
         """
-        #
-        # Your code here.
-        #
-        pass
+
+        self.peer_list.lock.acquire()
+        try:
+            peer_ids = sorted(self.peer_list.peers.keys())
+            if peer_ids[0] is not self.owner.id:
+                self.token = {self.owner.id: self.time}
+                self.request = {self.owner.id: self.time}
+                for pid in peer_ids:
+                    self.token[pid] = 0
+                    self.request[pid] = 0
+            else:
+                self.token = {self.owner.id: self.time}
+                self.state = TOKEN_PRESENT
+
+        finally:
+            self.peer_list.lock.release()
+
 
     def destroy(self):
         """ The object is being destroyed.
@@ -98,24 +90,40 @@ class DistributedLock(object):
         give it to someone else.
 
         """
-        #
-        # Your code here.
-        #
-        pass
+
+        self.peer_list.lock.acquire()
+        try:
+            peer_ids = sorted(self.peer_list.peers.keys())
+            if self.state is TOKEN_PRESENT or self.state is TOKEN_HELD:
+                self.release()
+
+        finally:
+            self.peer_list.lock.release()
+
 
     def register_peer(self, pid):
         """Called when a new peer joins the system."""
-        #
-        # Your code here.
-        #
-        pass
+
+        self.peer_list.lock.acquire()
+
+        try:
+            self.token[pid] = 0
+            self.request[pid] = 0
+
+        finally:
+            self.peer_list.lock.release()
 
     def unregister_peer(self, pid):
         """Called when a peer leaves the system."""
-        #
-        # Your code here.
-        #
-        pass
+
+        self.peer_list.lock.acquire()
+
+        try:
+            del self.token[pid]
+            del self.request[pid]
+
+        finally:
+            self.peer_list.lock.release()
 
     def acquire(self):
         """Called when this object tries to acquire the lock."""
