@@ -130,15 +130,62 @@ class DistributedLock(object):
             self.peer_list.lock.acquire()
             try:
                 self.state = TOKEN_PRESENT
-                for peer in sorted(self.peer_list.get_peers()):
-                    if self.request[peer] > self.token[peer]:
-                        self.state = NO_TOKEN
-                        self.token[self.owner.id] = self.time
-                        self.peer_list.get_peers()[peer].obtain_token(
-                            self._prepare(self.token))
+                # This implementation goes over the peers in order from the
+                # beginning
+
+                #for peer in sorted(self.peer_list.get_peers()):
+                #    if self.request[peer] > self.token[peer]:
+                #        self.state = NO_TOKEN
+                #        self.token[self.owner.id] = self.time
+                #        self.peer_list.get_peers()[peer].obtain_token(
+                #            self._prepare(self.token))
+                #        break
+
+                # The algorithm checks all the peers in an order "clockwise"
+                # from the current peer that way it isn't always the first peer
+                # in the list that is being checked
+                peers = self.peer_list.get_peers()
+                keys = peers.keys()
+
+                # Since the peers can enter and exit at any time, the chance of
+                # there being missing ids are high, so a modulo loop would not
+                # work
+                before = {}
+                after = {}
+                for key in keys:
+                    if key < self.owner.id:
+                        before[key] = peers[key]
+                    elif key > self.owner.id:
+                        after[key] = peers[key]
+                request_found = False
+
+                # So at most, this block of code should only loop n times
+                for peer in sorted(after):
+                    request_found = self.release_aux(peer)
+                    if (request_found == True):
                         break
+
+                if (request_found == False):
+                    # A request wasn't found in the peers with ids greater than
+                    # this, so search in the peers whose ids are less than the
+                    # owner's
+                    for peer in sorted(before):
+                        request_found = self.release_aux(peer)
+                        if (request_found == True):
+                            break
             finally:
                 self.peer_list.lock.release()
+
+    def release_aux(self, peer):
+        """
+        Just a function make the code a little cleaner
+        """
+        if self.request[peer] > self.token[peer]:
+            self.state = NO_TOKEN
+            self.token[self.owner.id] = self.time
+            self.peer_list.get_peers()[peer].obtain_token(
+                self._prepare(self.token))
+            return True
 
     def request_token(self, time, pid):
 
